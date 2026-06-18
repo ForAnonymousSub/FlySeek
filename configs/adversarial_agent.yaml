@@ -1,0 +1,80 @@
+# FlySeek adversarial agent configuration (SKILL.md §2)
+#
+# Three difficulty tiers. The factory picks the matching sub-block:
+#
+#     from flyseek.adversary import create_adversarial_agent
+#     agent = create_adversarial_agent("medium", config=yaml.safe_load(...))
+#
+# All units: SI (meters, seconds, radians/degrees as labelled).
+# All angles labelled "_deg" are degrees; the agent converts internally.
+
+easy:
+  # Heading-noise random walk, no drone awareness.
+  speed_mps: 1.5
+  heading_noise_rad_per_sqrt_s: 0.4
+  mean_revert_rate: 0.1
+
+medium:
+  # S-curve evasion. Three behaviour zones gated by distance.
+  cruise_speed: 2.0          # m/s when drone is far (> engagement_range_max)
+  evade_speed:  3.0          # m/s when drone is in engagement window
+  panic_speed:  4.0          # m/s when drone is too close (< engagement_range_min)
+
+  engagement_range_min: 5.0  # m, below this → panic (straight away, no sway)
+  engagement_range_max: 40.0 # m, above this → cruise (no evasion)
+
+  sway_amplitude_deg: 35.0   # peak ± deg heading sway in evade mode
+  sway_period_s:      2.0    # seconds for one full sway cycle
+
+  cruise_heading_jitter_deg: 5.0
+  cruise_persistence_s:      4.0
+
+hide_seek:
+  # Open-road drive → hide in alley/building → peek to re-emerge.
+  use_open_road_phase: true
+  open_road_duration_s: 14.0
+  open_road_route_len_m: 140.0
+  open_road_min_route_frac: 0.55
+  open_road_speed_mps: 4.5
+  cruise_speed: 2.0
+  evade_speed: 3.0
+  panic_speed: 4.0
+  engagement_range_min: 5.0
+  engagement_range_max: 40.0
+  sway_amplitude_deg: 35.0
+  sway_period_s: 2.0
+  cruise_heading_jitter_deg: 5.0
+  cruise_persistence_s: 4.0
+  evade_before_hide_s: 8.0
+  hide_trigger_range_m: 45.0
+  hide_speed: 4.0
+  hide_arrive_m: 3.0
+  hide_stuck_timeout_s: 6.0
+  hide_search_radius_m: 32.0
+  hide_duration_s: 22.0
+  peek_after_hide_s: 8.0
+  peek_speed: 2.5
+  peek_distance_m: 16.0
+
+hard:
+  # Phase 2 — requires PCD scene_data + behavior tree. Not implemented yet.
+  # See SKILL.md §2.3.
+  placeholder: true
+
+
+# Kinematic constraints used by the integrator (caller passes to integrate_target).
+# These cap how fast the *target* can change velocity / heading regardless of what
+# the adversary wishes.
+integrator:
+  max_speed_mps:       6.0
+  max_turn_rate_deg_s: 90.0   # car-style; humans/bikes can be higher
+
+# Optional play area (XY, NED meters). When set, the integrator reflects velocity
+# at the boundary so targets never drift off-scene.
+# NOTE: leave commented out to disable; the demo script will derive a reasonable
+# play_box from the target's *initial* world pose at run-time.
+# play_box:
+#   x_min: -50.0
+#   x_max:  50.0
+#   y_min: -50.0
+#   y_max:  50.0

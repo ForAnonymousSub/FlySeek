@@ -1,0 +1,65 @@
+# FlySeek GS chase scene config for env_gs_urban_dense.
+#
+# Derived empirically (Phase A render-scan + projection validation), because
+# this aerial 3DGS reconstruction is rooftop-dominated: the occupancy map has
+# NO usable street network (dilated building footprint fills the narrow lanes),
+# so the car route is a hand-traced polyline on a real, well-reconstructed road
+# in the visually-good region, NOT find_major_road_seed output.
+#
+# Frame: PCD/GS world (== unified metric, pcd_scale_ratio=1). +z is up.
+
+env: env_gs_urban_dense
+
+# Region where the reconstruction is clean (roads/buildings/cars), from the
+# nadir quality-map scan. Everything outside (esp. the western park) is floater.
+good_region:
+  xmin: -10.0
+  xmax: 45.0
+  ymin: -38.0
+  ymax: 25.0
+
+ground_z: -15.0            # REAL street surface, verified by back-projecting the
+                           # visible road pixels: at z=-15 they trace a coherent
+                           # straight road, confirming this is the drivable plane
+                           # (the global occupancy "ground band" ~-29 is sparse
+                           # sub-road noise, NOT the surface).
+
+# Real road network read off the (21,-7) nadir tile via validated inverse proj:
+#   E-W road  : y≈-14, x∈[18,39]
+#   N-S branch: x≈17, y∈[-27,-14]   intersection ≈ (18,-14)
+car_route:
+  # ordered waypoints (x, y) on asphalt; z = ground_z. Car drives N->E with a
+  # turn at the intersection (heading change -> good tracking data). Direction
+  # chosen so the trailing UAV stays INSIDE the good region (a westbound car
+  # would push the UAV out to x~57 into the eastern floater zone).
+  # Anchored to REAL parked cars detected in the point cloud (detect_cars_pcd):
+  # a clean N-S lane of road-level cars (base_z ~-15) at x~16..21, y -11..-22.
+  # Routing THROUGH confirmed car positions guarantees the target drives on the
+  # actual street surface (not a plaza/podium that merely happens to be ~-15).
+  # Car drives SOUTH (-y); the UAV trails NORTH, staying inside the good region.
+  waypoints:
+    - [20.9, -11.6]
+    - [20.0, -15.5]
+    - [17.8, -17.8]
+    - [15.9, -19.8]
+    - [18.0, -22.0]
+  speed_mps: 6.0           # target car speed
+  waypoint_step_m: 2.0     # resample spacing along the polyline
+
+# UAV tracker geometry: oblique downward view. The camera MUST stay above the
+# rooftops (tops ~z=-5) and in the training-camera band, else it drops into the
+# buildings / floaters (verified: z=-8 breaks rendering). So real altitude is
+# kept at z~=2; the "more oblique / lower-angle" look is achieved by a larger
+# follow distance, easing pitch from ~-58 to ~-48 deg. yaw/pitch solved
+# per-frame to keep the car centered via flyseek.render.gs_camera.
+uav:
+  altitude_z: 2.0          # absolute world z (above rooftops ~-5; z=-8 verified
+                           # to break rendering, so stay in the training band)
+  follow_distance_m: 15.0  # tightened from 28: car now sits at the real road
+                           # z=-14.5 (15 m higher), so ~16.5 m AGL; follow=15
+                           # keeps the steep-oblique ~-48 deg view
+  smooth_alpha: 0.4        # EMA on drone xy for smooth motion
+
+camera:
+  render_scale: 1.0        # 1.0 = native 2048x1536; lower for faster renders
+  # intrinsics are auto-read from cameras.bin by gs_bridge / gs_camera

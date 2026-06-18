@@ -1,0 +1,37 @@
+# VLT-style instruction templates (SKILL §4.2). Placeholders:
+#   {appearance}  e.g. "the small red car"
+#   {behavior}    e.g. "weaving back and forth in a zigzag pattern"
+#   {cover}       e.g. "the nearby buildings"
+#
+# Three tiers map to adversary difficulty (easy/medium/hide_seek|hard).
+# IRON RULES (enforced by flyseek.instruction.blacklist):
+#   - no navigation verbs (fly/turn/ascend/...)
+#   - no camera-aiming directives (look at / point camera ...)
+#   - no future target position (will end up at / headed to ...)
+
+tiers:
+  easy:
+    - "Track {appearance}."
+    - "Follow {appearance}."
+    - "Keep tracking {appearance}."
+    - "Stay with {appearance}."
+    - "Maintain tracking of {appearance}."
+    - "Continue tracking {appearance}."
+    - "Keep {appearance} in view."
+
+  medium:
+    - "Track {appearance} that is {behavior}."
+    - "Follow {appearance} while it is {behavior}."
+    - "Keep tracking {appearance} as it keeps {behavior}."
+    - "Stay with {appearance}, which is {behavior}."
+    - "Maintain tracking of {appearance} that is {behavior}."
+    - "Track {appearance}; it is {behavior}."
+    - "Follow {appearance} that keeps {behavior}."
+
+  hard:
+    - "Track {appearance} that is {behavior} near {cover}."
+    - "Follow {appearance} as it is {behavior} around {cover}."
+    - "Keep tracking {appearance}, which is {behavior} while using {cover}."
+    - "Stay with {appearance} that is {behavior} amid {cover}."
+    - "Maintain tracking of {appearance} that is {behavior} close to {cover}."
+    - "Track {appearance} that is {behavior}, exploiting {cover}."

@@ -1,0 +1,48 @@
+# Generated outputs
+output/
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.avi
+!**/example.png
+!**/README*.png
+# Tracked source assets (target sprites used by the renderer)
+!assets/
+!assets/*.png
+# Documentation images
+!docs/**/*.png
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Environments
+.env
+.env.local
+*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Large data
+*.h5
+*.hdf5
+*.parquet
+*.tfrecord

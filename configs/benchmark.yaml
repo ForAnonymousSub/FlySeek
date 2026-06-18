@@ -1,0 +1,31 @@
+# FlySeek-Bench top-level generation config (SKILL §7.2).
+# Consumed by `flyseek-bench gen` defaults / batch_runner.BatchConfig.
+
+env: env_airsim_16
+
+# Phased delivery sizes (SKILL §7.2): small validation -> mid -> paper-scale.
+phase: small          # small | mid | large
+phases:
+  small:  { episodes: 9,     per_difficulty: 3 }
+  mid:    { episodes: 30000, per_difficulty: 10000 }
+  large:  { episodes: 120000, per_difficulty: 40000 }
+
+# Difficulty mix (weights). 'hard' uses the hide_seek hard tracking preset.
+difficulty_mix:
+  easy: 1
+  medium: 1
+  hard: 1
+
+seed: 42
+
+# Per-episode render settings (forwarded to the demo loop).
+render:
+  tick_hz: 20
+  duration_s: 40
+  modalities_stride: 10   # depth+seg (and bbox) every N ticks
+  topdown: true
+
+instruction:
+  llm_backend_config: configs/llm_backend.yaml
+  templates_config: configs/instruction_templates.yaml
+  keep_per_episode: 3

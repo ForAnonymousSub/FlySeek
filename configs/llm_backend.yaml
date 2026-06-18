@@ -1,0 +1,25 @@
+# LLM/VLM backend selection for instruction generation (SKILL §4.6).
+# Only 'mock' is implemented in this scope; the others are declared hooks that
+# raise NotImplementedError until wired in flyseek/instruction/llm_backend.py.
+
+backend: "mock"           # mock | qwen_vl_local | openai | claude | glm | gemini
+
+mock:
+  # Deterministic with a seed; appearance_pool overrides the built-in phrases.
+  seed: 42
+  # appearance_pool:
+  #   car: ["the small red car", "the dark sedan"]
+  #   default: ["the tracked vehicle"]
+
+qwen_vl_local:
+  base_url: "http://localhost:8000/v1"
+  model: "Qwen/Qwen2.5-VL-7B-Instruct"
+  max_tokens: 256
+
+openai:
+  api_key: "${OPENAI_API_KEY}"
+  model: "gpt-4o-mini"
+
+claude:
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "claude-3-5-haiku-20241022"

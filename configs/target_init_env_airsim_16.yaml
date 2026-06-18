@@ -1,0 +1,85 @@
+# Target road-init presets for scene env_airsim_16 (NYC, PCD v1.5 d3).
+# Used by init_target_pose.py, demo_adversary_chase, list_initializable_targets.py.
+#
+# The PCD here has voxel width = 1.5 m and most roads are 2-4 m wide strips,
+# so ``min_corridor_width_m`` cannot be very large. The hard "is this a real
+# open road?" gate is the combination of:
+#   - drive_feasibility (car can roll forward N m without hitting a wall)
+#   - forward+backward ray sum (long contiguous road in both directions)
+#   - guardrail check: roof_z > ground_z + 0.5 m AND < clearance => reject
+
+env: env_airsim_16
+default_profile: standard
+
+profiles:
+  strict:
+    description: "Tight gates; long road + wide corridor (rarely passes here)."
+    min_corridor_width_m: 6.0
+    min_forward_ray_m: 20.0
+    max_ground_slope_m: 1.2
+    min_vertical_clearance_m: 5.0
+    min_open_ray_sum_m: 50.0
+    min_drive_feasibility_m: 15.0
+    search_radius_m: 220.0
+    sample_step_m: 4.0
+    max_samples: 4000
+    min_accept_score: 30.0
+    prefer_near_anchor_m: 80.0
+    # Hard cap on candidate-to-anchor distance. Defends against
+    # "drivable water cell"-style PCD false positives at large radii
+    # (water surface gives sparse points that pass min_ground_points_per_cell
+    # but the cell is well outside the actor's home block / road network).
+    max_shift_from_anchor_m: 200.0
+    use_road_seed_fallback: false
+    road_seed_search_radius_m: 220.0
+    road_seed_relaxed_accept: false
+    strategy: spiral_only
+
+  standard:
+    description: "Default for FlySeek: car must roll ≥12 m on a ≥30 m open road."
+    min_corridor_width_m: 2.0
+    min_forward_ray_m: 12.0
+    max_ground_slope_m: 1.5
+    min_vertical_clearance_m: 4.0
+    min_open_ray_sum_m: 30.0
+    min_drive_feasibility_m: 12.0
+    search_radius_m: 240.0
+    sample_step_m: 4.0
+    max_samples: 6000
+    min_accept_score: 22.0
+    prefer_near_anchor_m: 120.0
+    # See `strict.max_shift_from_anchor_m` for rationale. 220 m comfortably
+    # covers the easy/medium successful inits we observe (176–192 m shift)
+    # while rejecting the 236 m hard-run init that was landing in the river.
+    max_shift_from_anchor_m: 220.0
+    use_road_seed_fallback: true
+    road_seed_search_radius_m: 240.0
+    road_seed_sample_step_m: 8.0
+    road_seed_relaxed_accept: true
+    road_seed_min_road_score: 18.0
+    road_seed_min_corridor_m: 2.0
+    strategy: spiral_then_road_seed
+
+  major_road:
+    description: "Bias road-seed search; still requires ≥8 m drive feasibility."
+    min_corridor_width_m: 2.0
+    min_forward_ray_m: 10.0
+    max_ground_slope_m: 1.5
+    min_vertical_clearance_m: 4.0
+    min_open_ray_sum_m: 24.0
+    min_drive_feasibility_m: 8.0
+    search_radius_m: 80.0
+    sample_step_m: 4.0
+    max_samples: 1200
+    min_accept_score: 18.0
+    prefer_near_anchor_m: 140.0
+    # Slightly looser than `standard` because this profile is the fallback
+    # used when `standard` exhausts all retries — still a hard cap.
+    max_shift_from_anchor_m: 240.0
+    use_road_seed_fallback: true
+    road_seed_search_radius_m: 240.0
+    road_seed_sample_step_m: 8.0
+    road_seed_relaxed_accept: true
+    road_seed_min_road_score: 14.0
+    road_seed_min_corridor_m: 2.0
+    strategy: road_seed_then_spiral

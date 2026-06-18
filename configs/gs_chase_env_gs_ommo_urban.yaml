@@ -1,0 +1,88 @@
+# FlySeek GS chase scene config for env_gs_ommo_urban.
+#
+# Derived from Phase A analysis (occupancy + ground field + car detection).
+# The aerial 3DGS reconstruction is rooftop-dominated like urban_dense;
+# the car route is a hand-traced polyline through confirmed road-level parked
+# cars (base_z ~ -15..-17), NOT auto road-seed output.
+#
+# Frame: PCD/GS world (== unified metric, pcd_scale_ratio=1). +z is up.
+
+env: env_gs_ommo_urban
+
+# Core reconstruction region (from point-cloud p5..p95 + visual BEV scan).
+good_region:
+  xmin: -25.0
+  xmax: 28.0
+  ymin: -28.0
+  ymax: 28.0
+
+ground_z: -16.4            # REAL road surface, measured by probing the PCD along
+                           # the rendered asphalt road (y~-15.5): ground_z is a
+                           # tight -16.0..-16.8 there (the earlier -15 sat on the
+                           # demolition lot, which renders higher -> car floated).
+car_anchor_max_base_z: -13.0   # exclude podium-level parked cars (base_z ~-11)
+
+# Target-car motion mode: "policy" = env_airsim_16-style adversarial trajectory
+# (TargetPolicy evasive behaviours); "waypoints" = fixed hand-traced polyline.
+target_motion: policy
+
+# env_airsim_16-style adversarial target (TargetPolicy). The car cruises along
+# the validated N-S street and makes sudden evasive turns, confined to the
+# renderable corridor by play_box. z snaps to the road surface per-position.
+target:
+  behavior: sharp_turn       # direct_escape | sharp_turn | detour_feint
+  difficulty: medium         # easy | medium | hard (turn rate / interval)
+  seed: 42
+  dt: 0.2                    # 5 Hz, like the AirSim chase
+  episode_seconds: 10.0      # ~50 continuous frames
+  start: [7.0, -15.5]        # on the rendered asphalt road (right side, y~-15.5)
+  init_heading_deg: 180.0    # drive along -x down the straight road
+  speed_mps: 3.5
+  corridor_half_width_m: 3.0 # tube around the road centerline (car_route below)
+  road_z_max: -15.0          # reject podium/lot ground; snap to road plane
+  play_box:                  # outer safety box (renderable region)
+    xmin: -17.0
+    xmax: 9.0
+    ymin: -19.0
+    ymax: -3.0
+
+# Road centerline (also the tube the policy car is confined to). Traced on the
+# rendered asphalt road from the nadir calibration: a straight N-S road at
+# y~-15.5 (x: +7 -> -12), curving SW into the cross road / roundabout.
+car_route:
+  waypoints:
+    - [7.0, -15.5]
+    - [2.0, -15.5]
+    - [-4.0, -15.5]
+    - [-9.0, -15.3]
+    - [-12.5, -14.0]
+    - [-14.0, -10.0]
+    - [-14.5, -6.0]
+  speed_mps: 3.5
+  waypoint_step_m: 2.0
+
+# Target car proxy (composited onto the GS background).
+car_model:
+  style: sprite              # sprite (photo imposter) | car (mesh) | box
+  length: 4.6                # nominal metric dims (BEFORE scale)
+  width: 1.9
+  height: 1.5
+  scale: 0.1                 # 3DGS world is ~10x metric; 1/10 matches the scene's
+                             # own baked-in parked cars / road width
+  sprite_path: flyseek_extend/assets/target_suv.png  # real SUV photo billboard
+  sprite_scale: 1.0          # extra size tuning for the sprite (1.0 == car length)
+  body_rgb: [205, 45, 45]    # (mesh fallback colours)
+  cabin_rgb: [35, 45, 65]
+
+uav:
+  altitude_z: -2.0           # LOWERED: closer chase view (was 2.0); still well
+                             # above rooftops (~-10) and near training-camera
+                             # band (z~0) so GS render stays clean.
+  follow_distance_m: 10.0    # tighter trail -> lower, more horizontal chase
+  alt_band: [-4.0, 3.0]      # altitude search band around altitude_z
+  desired_pitch_deg: -35.0   # flatter oblique (lower-angle) chase look
+  smooth_alpha: 0.4
+
+camera:
+  render_scale: 1.0
+  # intrinsics auto-read from cameras.bin by gen_gs_chase_geometry / gs_bridge
