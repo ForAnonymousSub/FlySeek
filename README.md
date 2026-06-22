@@ -1,80 +1,116 @@
 # FlySeek
 
-**Adversarial Aerial Visual-Language Tracking (VLT) Benchmark**.
+**An Adversarial Aerial Vision-Language Tracking (VLT) Benchmark & Data-Generation Framework**
 
 [![Python](https://img.shields.io/badge/python-3.10-4B8BBE.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 ---
 
-## What is FlySeek
+## Overview
 
-VLN answers *"navigate to a static goal from a language command"* (Vision-Language
-**Navigation**). FlySeek answers *"keep tracking a moving, hiding target described by
-language"* (Vision-Language **Tracking**). A UAV must keep an **adversarial, evasive,
-occlusion-seeking** target in view, guided by *referring-style* instructions such as
-`"Track the red SUV"`.
+FlySeek targets a problem that aerial vision-language *navigation* (VLN) does not address:
+**continuously keeping a moving, actively evading target in view from a UAV, given a
+referring-style language description**. Where navigation ends once a static goal is
+reached, tracking only *begins* there — the target drives away, turns sharply, feints,
+and hides behind buildings, and success is judged over the **entire process**, not at a
+single endpoint.
 
-| | VLN | **FlySeek** |
+FlySeek is a **self-contained Python framework** that (1) drives an adversarial target
+and a visibility-aware expert observer entirely offline in NumPy, (2) renders the
+resulting episodes through pluggable backends, and (3) emits standardized,
+language-conditioned tracking episodes with full evaluation metrics.
+
+| | Aerial VLN (prior platforms) | **FlySeek (this work)** |
 |---|---|---|
-| Task | navigate to a static goal | continuously track a dynamic adversarial target |
-| Instruction | command *how to fly* | refer to *who to track* + behavior prediction |
-| Target | fixed landmark | actively evading / hiding vehicle |
-| Evaluation | NE / SR / OSR / SPL (endpoint) | Track-AUC / Lost-Rate / Redetection-Time (process) |
+| Task | reach a static goal from a route command | track a dynamic, adversarial target |
+| Language | instructs *how to fly* | *refers to who to track* + predicts behavior |
+| Target | fixed landmark | actively evading / occlusion-seeking vehicle |
+| Horizon | one-shot plan to an endpoint | continuous, process-level |
+| Metrics | NE / SR / OSR / SPL (endpoint) | Track-AUC / Lost-Rate / Redetection-Time (process) |
 
-## Pipeline (partial content for now, still being updated)
+## What this repository contributes
+
+The modules below are the substance of FlySeek. They are implemented from scratch, run
+**fully offline**, and are independent of any simulator's flight-control stack:
+
+- **Adversarial target engine** — `flyseek/bench/target_policy.py`, `flyseek/adversary/`.
+  Five deterministic, seed-reproducible behaviors (`direct_escape`, `sharp_turn`,
+  `detour_feint`, `occlusion_seeking`, `alley_hutong`) over three difficulty tiers, with
+  both per-step and waypoint interfaces, road-graph snapping, and kinematic limits.
+- **Visibility-aware preemptive expert** — `flyseek/bench/expert_trajectory.py`.
+  A viewpoint planner that scores candidate observer poses over a look-ahead horizon of
+  the target's *future* motion
+  (`α·visibility − β·occlusion − γ·distance − η·collision − μ·smoothness`), so it
+  anticipates occlusion rather than trailing the target (not shortest-path).
+- **Offline geometric reasoning** — `flyseek/adapters/pcd_occupancy.py`, `flyseek/utils/`.
+  Point-cloud occupancy maps, ray-cast line-of-sight, cover/alley route planning, and
+  segmentation-derived building maps — all computed without the renderer.
+- **Visibility evaluator** — `flyseek/bench/visibility.py`.
+  Standardizes raw view judgments into `in_camera_frustum` / `line_of_sight_clear` /
+  `visibility_score` / `occlusion_risk`, with documented fallbacks (never silently
+  invents geometry).
+- **Language-conditioned VLT instructions** — `flyseek/bench/instruction_generator.py`,
+  `flyseek/instruction/`. Attribute-grounded referring expressions across four template
+  families, a "three iron rules" safety blacklist, quality filtering, and pluggable
+  LLM/VLM backends (mock / local Qwen-VL / OpenAI / Claude / GLM).
+- **Standardized dataset schema & I/O** — `flyseek/bench/schema.py`, `export.py`.
+  Typed episode / frame / instruction / trajectory / metric records with validation.
+- **Process-level tracking metrics & validator** — `flyseek/bench/metrics.py`,
+  `validate_episode.py`. Episode metrics plus an episode/batch paper-consistency report.
+- **Batch generator** — `flyseek_bench/run_generate_episodes.py`. One-command episode
+  generation with a fully offline `--dry_run` mode and built-in sanity checks.
+- **Multi-backend rendering** — `flyseek/render/`, `flyseek/adapters/`. AirSim teleport,
+  UnrealCV (UE5), and 3D Gaussian Splatting, behind one interface.
+- **Reproducibility** — an offline unit-test suite (25+ modules) that needs no simulator.
+
+## Public API (`flyseek_bench`)
+
+Every stage of the framework is a runnable module / importable surface:
 
 ```
-adversarial target policy (offline, numpy)
-        → visibility-aware expert viewpoint (offline, numpy)
-        → render backend ──┬─ AirSim teleport
-                           ├─ UnrealCV (UE5)
-                           └─ 3D Gaussian Splatting
-        → OpenFly-compatible pose.jsonl + PNG + flyseek_meta.jsonl
-        → VLT instructions (mock / local Qwen-VL / OpenAI / Claude / GLM)
-        → tracking metrics (Track-AUC, Lost-Rate, Redetection-Time, Collision-Rate)
+flyseek_bench.schema                # typed records + validation
+flyseek_bench.export                # JSON / JSONL writers
+flyseek_bench.target_policy         # adversarial behaviors
+flyseek_bench.visibility            # per-frame visibility standardization
+flyseek_bench.instruction_generator # language-conditioned instructions
+flyseek_bench.expert_trajectory     # visibility-aware expert annotation
+flyseek_bench.metrics               # python -m flyseek_bench.metrics --episode_dir ...
+flyseek_bench.validate_episode      # python -m flyseek_bench.validate_episode --batch_dir ...
+flyseek_bench.run_generate_episodes # python -m flyseek_bench.run_generate_episodes ...
 ```
 
-## Features
+## Pipeline
 
-- **Adversarial targets**: 5 deterministic behaviors (`direct_escape`, `sharp_turn`,
-  `detour_feint`, `occlusion_seeking`, `alley_hutong`) × 3 difficulty tiers, fully
-  seed-reproducible.
-- **Visibility-aware expert**: a preemptive viewpoint planner that anticipates
-  occlusion (not shortest-path).
-- **Offline scene geometry**: PCD occupancy maps, line-of-sight checks, cover/alley
-  route planning, segmentation-based building maps.
-- **VLT instruction generation**: referring + behavior templates, a "three iron rules"
-  blacklist, quality filtering, multi-backend LLM.
-- **Tracking metrics**: Track-AUC, Lost-Rate, Redetection-Time, Collision-Rate,
-  FOV-keep-rate.
-- **Three render backends**: AirSim teleport, UnrealCV (UE5), 3D Gaussian Splatting.
-- **CI-friendly**: offline `--dry_run` generation and a unit-test suite that needs no
-  simulator.
+```
+adversarial target policy (offline, NumPy)
+   → visibility-aware preemptive expert viewpoints (offline, NumPy)
+   → render backend  ──┬─ AirSim teleport
+                       ├─ UnrealCV (UE5)
+                       └─ 3D Gaussian Splatting
+   → standardized episode: metadata.json + frames.jsonl + trajectories.json
+                           + instruction.json + visibility.json + metrics.json
+   → language-conditioned VLT instructions (mock / Qwen-VL / OpenAI / Claude / GLM)
+   → process-level tracking metrics (Track-AUC, Lost-Rate, Redetection-Time, Collision-Rate)
+```
+
+The target policy, expert planner, geometric reasoning, instruction generation, and
+evaluation all run **without a simulator** — the renderer is only needed to turn the
+planned poses into RGB frames, and it is swappable.
 
 ## Installation
 
-FlySeek is an **overlay** on OpenFly-Platform: its contents become the
-`flyseek_extend/` directory of an OpenFly checkout.
-
 ```bash
-# 1. Get OpenFly-Platform first (simulators, scene_data, conda env)
-git clone https://github.com/SHAILAB-IPEC/OpenFly-Platform.git
-cd OpenFly-Platform
-
-# 2. Clone FlySeek INTO it, named exactly `flyseek_extend`
-git clone <your-fork-url> flyseek_extend
-
-# 3. Install the package (in the OpenFly conda env)
-conda activate openfly
-cd flyseek_extend
-pip install -e .                              # base
-pip install -e ".[llm-local,quality,dev]"     # + local VLM, scoring, tests
+git clone <your-fork-url> FlySeek
+cd FlySeek
+python -m venv .venv && source .venv/bin/activate   # or use conda
+pip install -e .                              # core: offline pipeline + tests
+pip install -e ".[llm-local,quality,dev]"     # + local VLM, scoring, dev/test extras
 ```
 
-> The package resolves the OpenFly root by walking up from `flyseek_extend/`, so the
-> directory **must** be named `flyseek_extend`. Runtime simulator/scene assets
-> (`scene_data/`, `envs/`) come from the OpenFly checkout and are not redistributed here.
+The core package and the offline `--dry_run` pipeline run standalone. **Simulator-backed
+rendering** additionally needs the corresponding simulator and 3-D scene assets — see
+*Runtime backends* below.
 
 ## Quick start
 
@@ -82,84 +118,78 @@ pip install -e ".[llm-local,quality,dev]"     # + local VLM, scoring, tests
 # A) Fully offline — exercise the whole pipeline with placeholder frames (no simulator)
 python -m flyseek_bench.run_generate_episodes \
   --scene_id env_airsim_16 --difficulty hard --behavior occlusion_seeking \
-  --seed 42 --num_episodes 3 --output_dir flyseek_extend/output/bench --dry_run
+  --seed 42 --num_episodes 3 --output_dir output/bench --dry_run
 
-# B) Run the offline test suite
-pytest flyseek_extend/tests -q
+# B) Offline test suite
+pytest tests -q
 
-# C) Compute metrics / validate a generated episode
-python -m flyseek_bench.metrics         --episode_dir flyseek_extend/output/bench/<episode_id>
-python -m flyseek_bench.validate_episode --episode_dir flyseek_extend/output/bench/<episode_id>
+# C) Metrics, then validation + paper-consistency report
+python -m flyseek_bench.metrics          --episode_dir output/bench/<episode_id>
+python -m flyseek_bench.validate_episode --batch_dir   output/bench
 ```
 
-### With a running simulator
+## Runtime backends
 
-Start a scene from the OpenFly checkout, then run a demo (full command examples live in
-`shell/demo.sh`):
+For photorealistic frames FlySeek plugs into external simulators. The AirSim, UnrealCV
+(UE5), and 3D-Gaussian-Splatting backends each need a simulator install plus 3-D scene
+assets (point clouds, segmentation maps, scene binaries). In our experiments these are
+provided by an [OpenFly-Platform](https://github.com/SHAILAB-IPEC/OpenFly-Platform)
+checkout: place this repository inside it as `flyseek_extend/`, start a scene, then run a
+demo (full command set in `shell/demo.sh`):
 
 ```bash
-# AirSim
 bash envs/airsim/env_airsim_16/LinuxNoEditor/start.sh
-
-# Occlusion-seeking chase (target hides behind annotated buildings; drone may lose track)
 python flyseek_extend/scripts/demo_adversary_chase.py \
   --env env_airsim_16 --auto-from-scout --init-profile standard \
   --target-behavior occlusion_seeking --target-policy-difficulty hard \
   --seed 66 --duration 75
-
-# Paired success-vs-fail tracking videos
-python flyseek_extend/scripts/demo_chase_pair.py \
-  --env env_airsim_16 --auto-from-scout --shared-seed 66 --duration 75
-
-# UnrealCV (UE5) backend
-bash flyseek_extend/shell/ue5.sh env_ue_smallcity
-python flyseek_extend/scripts/demo_unrealcv_chase.py \
-  --env env_ue_smallcity --target-behavior occlusion_seeking \
-  --target-policy-difficulty hard --duration 30
-
-# 3D Gaussian Splatting backend (geometry only / + render)
-bash flyseek_extend/shell/demo_gs_ommo_urban.sh
-bash flyseek_extend/shell/demo_gs_ommo_urban.sh --render
 ```
+
+FlySeek talks to the simulator through a thin TCP teleport client and **does not import
+the simulator's Python code** — the simulator only serves rendered frames, and can be
+replaced by UE5/UnrealCV or 3D-GS without touching the FlySeek core.
 
 ## Repository layout
 
 ```
-flyseek_extend/                 # this repo, mounted into OpenFly-Platform/
-├── flyseek/                    # main package (does not import OpenFly python code)
-│   ├── adapters/               # OpenFly TCP teleport client, AirSim/UnrealCV bridges, PCD occupancy
-│   ├── adversary/              # offline adversarial agents (easy / medium / hide-seek + factory)
-│   ├── bench/                  # schema, target policy, expert trajectory, instructions, metrics
-│   ├── eval/                   # episode evaluation + tracking metrics CLI
-│   ├── expert/                 # visibility-aware tracking drone / adaptive tracker
-│   ├── instruction/            # VLT instruction templates, blacklist, quality filter, LLM backends
-│   ├── pipeline/               # batch orchestration + flyseek-bench CLI
-│   ├── render/                 # GS chase geometry, car compositor, depth/overlay
-│   ├── scenarios/              # road scenario controller
-│   └── utils/                  # routes, road graph, visibility, target init, coords
-├── flyseek_bench/              # runnable entry points (python -m flyseek_bench.*)
-├── configs/                    # YAML configs (difficulty, templates, LLM backend, camera)
-├── scripts/                    # demo + probe + verify scripts
-├── shell/                      # launchers (AirSim/UE5/GS) + demo command cheatsheet
-├── tests/                      # offline unit tests (no simulator)
-└── assets/                     # target sprites
+FlySeek/
+├── flyseek/                  # core framework (renderer-agnostic, runs offline)
+│   ├── bench/                # ★ schema, target policy, expert planner, instructions, metrics, validator
+│   ├── adversary/            # offline adversarial agents + factory
+│   ├── expert/               # visibility-aware tracking drone / adaptive tracker
+│   ├── instruction/          # VLT templates, safety blacklist, quality filter, LLM backends
+│   ├── render/               # GS chase geometry, car compositor, depth / overlay
+│   ├── adapters/             # TCP teleport client, AirSim / UnrealCV bridges, PCD occupancy
+│   ├── scenarios/  utils/    # road graph, routes, visibility, target init, coords
+│   └── pipeline/  eval/      # batch orchestration + evaluation
+├── flyseek_bench/            # public runnable API  (python -m flyseek_bench.*)
+├── configs/                  # difficulty, templates, LLM backend, camera configs
+├── scripts/                  # demo + probe + verify scripts
+├── shell/   tests/   assets/ # launchers · offline tests · target sprites
 ```
 
 ## Tracking metrics
 
 - **Track-AUC** — mean fraction of frames the target is visible (∈ [0, 1]).
 - **Lost-Rate** — fraction of frames the target is fully lost.
-- **Redetection-Time** — mean seconds from a lost run to the next re-lock.
+- **Redetection-Time** — mean time from a lost run to the next re-lock.
+- **Line-of-sight continuity** — longest / average continuous visible segment.
 - **Collision-Rate** — collisions per frame.
-- **FOV-keep-rate** — alias of Track-AUC for parity with OpenFly reporting.
+- **Path length / efficiency** — UAV travel cost vs. net displacement.
+
+Episode success = visibility ratio ≥ difficulty threshold (easy/medium 0.70, hard 0.60)
+and no collision; thresholds are configurable.
 
 ## Roadmap
 
-- [ ] Humanoid targets (currently uses in-scene vehicle stand-ins via `simSetObjectPose`).
+- [ ] Humanoid targets (current targets are in-scene vehicle stand-ins).
 - [ ] Large-scale dataset release.
 
 ## License & attribution
 
-Original FlySeek code is © 2026 **JoshuaWen**, released under the [MIT License](./LICENSE).
-See [NOTICE](./NOTICE) for the relationship to OpenFly-Platform. FlySeek does not
-redistribute OpenFly source, simulator binaries, scene data, or model weights.
+FlySeek is original software © 2026 **JoshuaWen**, released under the
+[MIT License](./LICENSE). It is designed to interoperate with third-party simulators
+(AirSim, UnrealCV, 3D Gaussian Splatting) and, in our experiments, with OpenFly-Platform
+as a rendering/scene backend. FlySeek does **not** redistribute any simulator source,
+binaries, scene data, or model weights; those remain the property of their respective
+authors. See [NOTICE](./NOTICE) for details.
